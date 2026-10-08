@@ -12,6 +12,7 @@
 #include "MSXDevice.hh"
 #include "Schedulable.hh"
 #include "SimpleDebuggable.hh"
+#include "StringSetting.hh"
 #include "TclCallback.hh"
 
 #include "Observer.hh"
@@ -1130,6 +1131,7 @@ private:
 	  * Update displayMode's value and inform the Renderer.
 	  */
 	void updateDisplayMode(DisplayMode newMode, bool cmdBit, EmuTime time);
+	void updateHostVideoFrame();
 
 	// Observer<Setting>
 	void update(const Setting& setting) noexcept override;
@@ -1138,6 +1140,7 @@ private:
 	Display& display;
 	EnumSetting<bool>& cmdTiming;
 	EnumSetting<bool>& tooFastAccess;
+	StringSetting externalVideoFileSetting;
 
 	struct RegDebug final : SimpleDebuggable {
 		explicit RegDebug(const VDP& vdp);
@@ -1250,10 +1253,11 @@ private:
 	  * upon?
 	  */
 	const RawFrame* externalVideo;
+	std::unique_ptr<RawFrame> hostVideoFrame;
 
 	/** Are we currently superimposing?
-	 * This is a combination of the 'externalVideo' member (see above) and
-	 * the superimpose-enable bit in VDP register R#0. This property only
+	 * This is a combination of the external video input and the VDP's
+	 * superimpose controls (R#0 on MSX1, R#9/R#8 on MSX2). This property only
 	 * changes at most once per frame (at the beginning of the frame).
 	 */
 	const RawFrame* superimposing;

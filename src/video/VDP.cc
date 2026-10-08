@@ -32,6 +32,7 @@ TODO:
 #include "MSXCPU.hh"
 #include "MSXException.hh"
 #include "MSXMotherBoard.hh"
+#include "RawFrame.hh"
 #include "Reactor.hh"
 #include "TclObject.hh"
 #include "serialize_core.hh"
@@ -42,7 +43,9 @@ TODO:
 
 #include <algorithm>
 #include <cassert>
+#include <fstream>
 #include <memory>
+#include <vector>
 
 namespace openmsx {
 
@@ -110,6 +113,8 @@ VDP::VDP(const DeviceConfig& config)
 	, display(getReactor().getDisplay())
 	, cmdTiming    (display.getRenderSettings().getCmdTimingSetting())
 	, tooFastAccess(display.getRenderSettings().getTooFastAccessSetting())
+	, externalVideoFileSetting(getCommandController(), "external_video_file",
+		"640x480 P6 PPM frame updated by an external video source", "")
 	, vdpRegDebug      (*this)
 	, vdpStatusRegDebug(*this)
 	, vdpPaletteDebug  (*this)
@@ -727,6 +732,7 @@ void VDP::scheduleHScan(EmuTime time)
 void VDP::frameStart(EmuTime time)
 {
 	++frameCount;
+	updateHostVideoFrame();
 
 	// Toggle E/O.
 	// Actually this should occur half a line earlier,
@@ -756,7 +762,11 @@ void VDP::frameStart(EmuTime time)
 	// signal is provided then the VDP stops producing a signal
 	// (at least on an MSX1, VDP(0)=1 produces "signal lost" on my
 	// monitor)
-	if (const RawFrame* newSuperimposing = (controlRegs[0] & 1) ? externalVideo : nullptr;
+	const RawFrame* videoInput = externalVideo ? externalVideo : hostVideoFrame.get();
+	bool enableSuperimpose = isMSX1VDP() ? (controlRegs[0] & 1)
+		: (((controlRegs[9] & 0x30) == 0x10) &&
+		   ((controlRegs[8] & 0x20) == 0));
+	if (const RawFrame* newSuperimposing = enableSuperimpose ? videoInput : nullptr;
 	    superimposing != newSuperimposing) {
 		superimposing = newSuperimposing;
 		renderer->updateSuperimposing(superimposing, time);
@@ -791,6 +801,37 @@ void VDP::frameStart(EmuTime time)
 		<< ", timing: " << (palTiming ? "PAL"sv : "NTSC"sv)
 		<< "\n";
 	*/
+}
+
+void VDP::updateHostVideoFrame()
+{
+	const auto filename = externalVideoFileSetting.getString();
+	if (filename.empty()) {
+		hostVideoFrame.reset();
+		return;
+	}
+
+	std::ifstream input(std::string(filename), std::ios::binary);
+	std::string magic;
+	unsigned width = 0, height = 0, maxValue = 0;
+	if (!(input >> magic >> width >> height >> maxValue) ||
+	    magic != "P6" || width != 640 || height != 480 || maxValue != 255 ||
+	    input.get() != '\n') return;
+
+	std::vector<uint8_t> rgb(size_t(width) * height * 3);
+	if (!input.read(reinterpret_cast<char*>(rgb.data()),
+	                std::streamsize(rgb.size()))) return;
+
+	if (!hostVideoFrame) hostVideoFrame = std::make_unique<RawFrame>(width, height);
+	for (unsigned y = 0; y < height; ++y) {
+		auto line = hostVideoFrame->getLineDirect(y);
+		for (unsigned x = 0; x < width; ++x) {
+			size_t i = (size_t(y) * width + x) * 3;
+			line[x] = (uint32_t(rgb[i + 2]) << 16) |
+			          (uint32_t(rgb[i + 1]) << 8) | rgb[i];
+		}
+		hostVideoFrame->setLineWidth(y, width);
+	}
 }
 
 // The I/O functions.
