@@ -18,6 +18,43 @@ FRAME_BYTES = WIDTH * HEIGHT * 3
 HEADER = b"P6\n640 480\n255\n"
 
 
+def capture_backend() -> str:
+    if sys.platform == "win32":
+        return "dshow"
+    if sys.platform == "darwin":
+        return "avfoundation"
+    if sys.platform.startswith("linux"):
+        return "v4l2"
+    raise ValueError(f"automatic device selection is unavailable on {sys.platform}")
+
+
+def device_arguments(device: str) -> list[str]:
+    backend = capture_backend()
+    if backend == "dshow":
+        return ["-f", backend, "-i", f"video={device}"]
+    if backend == "avfoundation":
+        return ["-f", backend, "-i", f"{device}:none"]
+    return ["-f", backend, "-i", device]
+
+
+def list_devices(ffmpeg: str) -> int:
+    backend = capture_backend()
+    if backend == "v4l2":
+        print("Video4Linux2 devices:")
+        for path in sorted(Path("/dev").glob("video[0-9]*")):
+            print(path)
+        return 0
+    if backend == "dshow":
+        command = [ffmpeg, "-hide_banner", "-list_devices", "true",
+                   "-f", backend, "-i", "dummy"]
+    else:
+        command = [ffmpeg, "-hide_banner", "-f", backend,
+                   "-list_devices", "true", "-i", ""]
+    # FFmpeg normally exits with an error after listing devices.
+    subprocess.run(command, check=False)
+    return 0
+
+
 def publish(path: Path, rgb: bytes) -> None:
     temporary = path.with_name(path.name + ".tmp")
     with temporary.open("wb") as output:
@@ -58,25 +95,39 @@ def read_frame(stream) -> bytes | None:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--output", type=Path, required=True,
+    parser.add_argument("--output", type=Path,
                         help="PPM path used by openMSX's external_video_file setting")
     parser.add_argument("--ffmpeg", default="ffmpeg",
                         help="FFmpeg executable (default: ffmpeg from PATH)")
     parser.add_argument("--test-pattern", action="store_true",
                         help="write one test frame and exit")
+    parser.add_argument("--list-devices", action="store_true",
+                        help="list local video capture devices and exit")
+    parser.add_argument("--device", help="capture device name (Windows), index (macOS), or path (Linux)")
     parser.add_argument("ffmpeg_input", nargs=argparse.REMAINDER,
                         help="FFmpeg input arguments after --")
     args = parser.parse_args()
+    if args.list_devices:
+        return list_devices(args.ffmpeg)
+    if args.output is None:
+        parser.error("--output is required for capture or --test-pattern")
+    input_args = args.ffmpeg_input
+    if input_args and input_args[0] == "--":
+        input_args = input_args[1:]
+    if args.device and input_args:
+        parser.error("use either --device or FFmpeg input arguments after --")
+    if args.device:
+        try:
+            input_args = device_arguments(args.device)
+        except ValueError as error:
+            parser.error(str(error))
     args.output.parent.mkdir(parents=True, exist_ok=True)
     if args.test_pattern:
         test_pattern(args.output)
         return 0
 
-    input_args = args.ffmpeg_input
-    if input_args and input_args[0] == "--":
-        input_args = input_args[1:]
     if not input_args:
-        parser.error("supply FFmpeg input arguments after --, or use --test-pattern")
+        parser.error("supply --device, FFmpeg input arguments after --, or --test-pattern")
 
     command = [args.ffmpeg, "-hide_banner", "-loglevel", "warning", *input_args,
                "-an", "-vf", f"scale={WIDTH}:{HEIGHT}",
@@ -97,4 +148,9 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    try:
+        sys.exit(main())
+    except FileNotFoundError:
+        print("Video capture failed: FFmpeg executable not found. "
+              "Install FFmpeg or pass --ffmpeg PATH.", file=sys.stderr)
+        sys.exit(1)

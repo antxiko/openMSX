@@ -30,18 +30,24 @@ search path. ROM binaries are not included here.
 
 ## Live capture
 
-Install FFmpeg and pass its input options after `--`. The bridge scales decoded
-frames to 640x480 RGB and publishes only complete frames. In PowerShell, for a
-Windows DirectShow device:
+Install an FFmpeg build with the operating system's capture backend. The bridge
+scales decoded frames to 640x480 RGB and publishes only complete frames. List
+available inputs, then select a webcam or USB analog capture device:
 
 ```powershell
-ffmpeg -list_devices true -f dshow -i dummy
-python Contrib/external_video_bridge.py --output external-video.ppm -- -f dshow -i 'video=DEVICE NAME'
+python Contrib/external_video_bridge.py --list-devices
+python Contrib/external_video_bridge.py --output external-video.ppm --device 'DEVICE NAME'
 ```
 
-On Linux, a typical Video4Linux2 input uses
-`-- -f v4l2 -i /dev/video0`. On macOS, AVFoundation uses
-`-- -f avfoundation -i '0:none'`; select the correct device index first.
+On Windows, `--device` takes the DirectShow video device name. On Linux it takes
+a Video4Linux2 path such as `/dev/video0`; `--list-devices` prints the available
+`/dev/video*` paths. On macOS it takes an AVFoundation index such as `0` (or a
+device name); `--list-devices` prints the available inputs. Capture drivers and
+FFmpeg must expose the device; appearing in OBS alone does not guarantee it
+appears in this backend.
+
+For unusual devices, pass native FFmpeg input options after `--`, for example
+`-- -f dshow -video_size 720x576 -i 'video=DEVICE NAME'` on Windows.
 If FFmpeg is not in `PATH`, supply `--ffmpeg /path/to/ffmpeg` before `--`.
 Device formats and PAL/NTSC settings must be chosen for the actual capture
 device. See [FFmpeg input device documentation](https://www.ffmpeg.org/ffmpeg-devices.html).
