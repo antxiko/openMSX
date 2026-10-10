@@ -23,9 +23,9 @@ set external_video_file C:/path/to/external-video.ppm
 On an MSX2 machine with the optional video functions, select superimpose with
 `SET VIDEO 2 : COLOR ,0,0` in BASIC. For a development preview on another
 V9938 machine, R#9 bits 5:4 must equal `01`, R#8 bit 5 must be clear, and
-background color index 0 must be used. The NMS 8280 machine definition needs
-its own disk ROM (`nms8280_disk.rom`, SHA-1
-`69f3dbfc1d516cd09a1a7e286049f99e37ca90d9`) in the normal openMSX ROM
+background color index 0 must be used. The NMS 8280 machine definition uses
+the normalized NMS 8250 disk ROM (`nms8250_disk.rom`, SHA-1
+`c3efedda7ab947a06d9345f7b8261076fa7ceeef`) in the normal openMSX ROM
 search path. ROM binaries are not included here.
 
 ## Live capture

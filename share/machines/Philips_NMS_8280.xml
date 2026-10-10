@@ -1,6 +1,6 @@
 <?xml version="1.0" ?>
 <!-- The NMS 8280 uses the same BIOS and MSX2 sub-ROM dumps as the NMS 8250.
-     The disk ROM below is from an NMS 8280 dump. Video hardware is partial. -->
+     Its normalized disk ROM matches the NMS 8250. Video hardware is partial. -->
 <!DOCTYPE msxconfig SYSTEM 'msxconfig2.dtd'>
 <msxconfig>
 
@@ -105,8 +105,9 @@
           <rom_visibility base="0x4000" size="0x4000"/> <!-- ROM only visible in page 1 -->
           <drives>2</drives>
           <rom>
-            <filename>nms8280_disk.rom</filename>
-            <sha1>69f3dbfc1d516cd09a1a7e286049f99e37ca90d9</sha1>
+            <!-- The 8280 dump's FDC register bytes normalize to the 8250 ROM. -->
+            <filename>nms8250_disk.rom</filename>
+            <sha1>c3efedda7ab947a06d9345f7b8261076fa7ceeef</sha1>
           </rom>
         </WD2793>
       </secondary>

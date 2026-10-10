@@ -26,6 +26,21 @@ traces. The front-panel source selector and level sliders also need a host-side
 representation. In particular, a displayed captured frame does not prove that
 `COPY SCREEN` writes the correct bytes to VRAM.
 
+The original NMS 8280 disk-ROM dump SHA-1
+`69f3dbfc1d516cd09a1a7e286049f99e37ca90d9` includes memory-mapped FDC
+register values. After those bytes are normalized to `0xFF`, it matches the
+NMS 8250 disk ROM SHA-1 `c3efedda7ab947a06d9345f7b8261076fa7ceeef`.
+Use the normalized ROM in the machine definition.
+
+Local ROM inventory checked against File-Hunter's 15 August 2026 openMSX set:
+the NMS 8250 BIOS, sub-ROM, and normalized disk ROM satisfy the NMS 8280
+definition, and all HB-F900 ROMs in its machine definition match. The alternate
+`hb-f900_disk2.rom` was also retained locally without replacing the configured
+disk ROM. File-Hunter's RomDB separately has two 32 KiB HBI-V1 dumps, SHA-1
+`dbafa0f6ffa6dbfadbf631d209c5c9837ad0e100` and
+`94c4089f91af3d5f2e8db97bb004fa13bbae0d20`. They differ in 260 bytes;
+neither is assigned to an openMSX device yet. ROM binaries stay outside Git.
+
 ## Current preview path
 
 The `external_video_file` setting accepts a 640x480 P6 PPM file. The VDP
@@ -90,6 +105,9 @@ HBI-V1 documentation.
   https://download.file-hunter.com/Manuals/Philips%20NMS%208280%20Service%20Manual.pdf
 - NMS 8280 disk ROM dump identification:
   https://www.msx.org/pt-br/node/59225
+- File-Hunter openMSX ROM set and HBI-V1 dumps:
+  https://download.file-hunter.com/System%20ROMs/
+  https://download.file-hunter.com/System%20ROMs/RomDB%20SystemROMs%20OpenMSX/
 - MAME MSX2 machine slot map (older NMS 8280 disk dump marked bad):
   https://github.com/mamedev/mame/blob/master/src/mame/msx/msx2.cpp
 - blueMSX description of NMS 8280 modes and digitization:
