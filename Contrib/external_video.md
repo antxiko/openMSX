@@ -30,6 +30,17 @@ search path. ROM binaries are not included here.
 
 ## Live capture
 
+In the built openMSX, open **Settings > Video > External video input...**.
+The panel lists capture devices when opened; choose a device such as `USB Video`
+or select **Network stream** and enter an RTSP/HTTP URL. Use **Start** to begin,
+**Switch source** to change inputs, and **Stop** to disconnect. On Windows the
+panel uses the `py -3` launcher by default. If Python or FFmpeg cannot be found,
+set their executable paths under **Capture tools**. The URL is not saved in the
+GUI preferences. The MSX software must still activate superimpose.
+
+The command-line bridge remains available for scripts and custom FFmpeg input
+options.
+
 Install an FFmpeg build with the operating system's capture backend. The bridge
 scales decoded frames to 640x480 RGB and publishes only complete frames. List
 available inputs, then select a webcam or USB analog capture device:

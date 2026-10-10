@@ -45,6 +45,10 @@ private:
 	void paintFont();
 	void paintShortcut();
 	void paintEditShortcut();
+	void paintExternalVideo();
+	void refreshExternalVideoDevices();
+	void startExternalVideo();
+	void stopExternalVideo();
 
 	struct FontInfo {
 		std::string filename;
@@ -82,9 +86,25 @@ private:
 	ConfirmDialog confirmOverwrite;
 
 	std::vector<FontInfo> availableFonts;
+	bool showExternalVideo = false;
+	int externalVideoSource = 0; // 0: capture device, 1: network stream
+	std::string externalVideoDevice;
+	std::string externalVideoUrl;
+	std::string externalVideoPython = "python";
+	std::string externalVideoFFmpeg;
+	std::string externalVideoStatus;
+	std::string externalVideoStopFile;
+	std::string externalVideoFrameFile;
+	std::vector<std::string> externalVideoDevices;
+	bool externalVideoActive = false;
 
 	static constexpr auto persistentElements = std::tuple{
 		PersistentElement{"style", &ImGuiSettings::selectedStyle},
+		PersistentElement{"showExternalVideo", &ImGuiSettings::showExternalVideo},
+		PersistentElement{"externalVideoSource", &ImGuiSettings::externalVideoSource},
+		PersistentElement{"externalVideoDevice", &ImGuiSettings::externalVideoDevice},
+		PersistentElement{"externalVideoPython", &ImGuiSettings::externalVideoPython},
+		PersistentElement{"externalVideoFFmpeg", &ImGuiSettings::externalVideoFFmpeg},
 	};
 };
 

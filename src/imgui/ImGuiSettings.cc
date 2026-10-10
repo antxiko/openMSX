@@ -16,6 +16,7 @@
 #include "Display.hh"
 #include "EventDistributor.hh"
 #include "FileContext.hh"
+#include "FileOperations.hh"
 #include "FilenameSetting.hh"
 #include "FloatSetting.hh"
 #include "GlobalCommandController.hh"
@@ -40,6 +41,7 @@
 #include "ReadOnlySetting.hh"
 #include "SettingsManager.hh"
 #include "StringSetting.hh"
+#include "TclObject.hh"
 #include "Version.hh"
 #include "VideoSourceSetting.hh"
 #include "Z80.hh"
@@ -58,6 +60,9 @@
 #include <SDL.h>
 
 #include <algorithm>
+#include <chrono>
+#include <filesystem>
+#include <fstream>
 #include <functional>
 #include <optional>
 #include <utility>
@@ -110,6 +115,9 @@ ImGuiSettings::ImGuiSettings(ImGuiManager& manager_)
 
 ImGuiSettings::~ImGuiSettings()
 {
+	if (!externalVideoStopFile.empty()) {
+		std::ofstream{externalVideoStopFile}.put('1');
+	}
 	deinitListener();
 }
 
@@ -177,6 +185,8 @@ void ImGuiSettings::showMenu(MSXMotherBoard* motherBoard)
 		const auto& hotKey = reactor.getHotKey();
 
 		im::Menu("Video", [&]{
+			ImGui::MenuItem("External video input...", nullptr, &showExternalVideo);
+			ImGui::Separator();
 			im::TreeNode("Look and feel", ImGuiTreeNodeFlags_DefaultOpen, [&]{
 				auto& scaler = renderSettings.getScaleAlgorithmSetting();
 				ComboBox("Scaler", scaler);
@@ -1844,6 +1854,151 @@ void ImGuiSettings::paint(MSXMotherBoard* motherBoard)
 	if (showCalibrateJoystick) paintCalibrate(joystickManager);
 	if (showFont) paintFont();
 	if (showShortcut) paintShortcut();
+	if (showExternalVideo) paintExternalVideo();
+}
+
+void ImGuiSettings::refreshExternalVideoDevices()
+{
+	auto script = FileOperations::join(FileOperations::getSystemDataDir(),
+	                                  "scripts/external_video_bridge.py");
+	auto directory = FileOperations::join(FileOperations::getUserDataDir(), "external-video");
+	FileOperations::mkdirp(directory);
+	auto listing = FileOperations::join(directory, "devices.txt");
+	if (!FileOperations::exists(script)) {
+		externalVideoStatus = "External video bridge script is missing.";
+		return;
+	}
+	TclObject command = makeTclList("exec");
+#ifdef _WIN32
+	if (externalVideoPython == "python" || externalVideoPython == "py") {
+		command.addListElement("py", "-3");
+	} else
+#endif
+	{
+		command.addListElement(externalVideoPython);
+	}
+	command.addListElement(script, "--list-devices-file", listing);
+	if (!externalVideoFFmpeg.empty()) {
+		command.addListElement("--ffmpeg", externalVideoFFmpeg);
+	}
+	if (!manager.execute(command)) {
+		externalVideoStatus = "Could not list devices. Check Python and FFmpeg.";
+		return;
+	}
+	externalVideoDevices.clear();
+	std::ifstream input{listing};
+	for (std::string name; std::getline(input, name); ) {
+		if (!name.empty()) externalVideoDevices.push_back(name);
+	}
+	externalVideoStatus = externalVideoDevices.empty() ? "No capture devices found."
+	                                                   : "Select a capture device.";
+}
+
+void ImGuiSettings::stopExternalVideo()
+{
+	if (!externalVideoStopFile.empty()) {
+		std::ofstream{externalVideoStopFile}.put('1');
+		externalVideoStopFile.clear();
+	}
+	manager.execute(makeTclList("set", "external_video_file", ""));
+	externalVideoActive = false;
+	externalVideoStatus = "External video stopped.";
+}
+
+void ImGuiSettings::startExternalVideo()
+{
+	if (externalVideoActive) stopExternalVideo();
+	if ((externalVideoSource == 0 && externalVideoDevice.empty()) ||
+	    (externalVideoSource == 1 && externalVideoUrl.empty())) {
+		externalVideoStatus = "Select a device or enter a stream URL.";
+		return;
+	}
+	auto script = FileOperations::join(FileOperations::getSystemDataDir(),
+	                                  "scripts/external_video_bridge.py");
+	if (!FileOperations::exists(script)) {
+		externalVideoStatus = "External video bridge script is missing.";
+		return;
+	}
+	auto directory = FileOperations::join(FileOperations::getUserDataDir(), "external-video");
+	FileOperations::mkdirp(directory);
+	externalVideoFrameFile = FileOperations::join(directory, "live.ppm");
+	auto stamp = std::chrono::steady_clock::now().time_since_epoch().count();
+	externalVideoStopFile = FileOperations::join(directory, strCat("stop-", stamp));
+	std::error_code error;
+	std::filesystem::remove(externalVideoFrameFile, error);
+	std::filesystem::remove(externalVideoStopFile, error);
+
+	TclObject command = makeTclList("exec");
+#ifdef _WIN32
+	if (externalVideoPython == "python" || externalVideoPython == "py") {
+		command.addListElement("py", "-3");
+	} else
+#endif
+	{
+		command.addListElement(externalVideoPython);
+	}
+	command.addListElement(script, "--output", externalVideoFrameFile,
+	                       "--stop-file", externalVideoStopFile);
+	if (!externalVideoFFmpeg.empty()) {
+		command.addListElement("--ffmpeg", externalVideoFFmpeg);
+	}
+	if (externalVideoSource == 0) {
+		command.addListElement("--device", externalVideoDevice);
+	} else {
+		command.addListElement("--", "-i", externalVideoUrl);
+	}
+	command.addListElement(">", FileOperations::join(directory, "bridge.out"),
+	                       "2>", FileOperations::join(directory, "bridge.err"), "&");
+	if (!manager.execute(command)) {
+		externalVideoStopFile.clear();
+		externalVideoStatus = "Could not start capture. Check Python and FFmpeg.";
+		return;
+	}
+	if (!manager.execute(makeTclList("set", "external_video_file", externalVideoFrameFile))) {
+		std::ofstream{externalVideoStopFile}.put('1');
+		externalVideoStopFile.clear();
+		externalVideoStatus = "This machine has no external video input setting.";
+		return;
+	}
+	externalVideoActive = true;
+	externalVideoStatus = "Capture started. The MSX must enable superimpose.";
+}
+
+void ImGuiSettings::paintExternalVideo()
+{
+	if (externalVideoDevices.empty() && externalVideoStatus.empty()) {
+		refreshExternalVideoDevices();
+	}
+	im::Window("External video input", &showExternalVideo, [&]{
+		ImGui::RadioButton("Capture device", &externalVideoSource, 0);
+		ImGui::SameLine();
+		ImGui::RadioButton("Network stream", &externalVideoSource, 1);
+		if (externalVideoSource == 0) {
+			if (ImGui::Button("Refresh devices")) refreshExternalVideoDevices();
+			for (const auto& device : externalVideoDevices) {
+				if (ImGui::Selectable(device.c_str(), externalVideoDevice == device)) {
+					externalVideoDevice = device;
+				}
+			}
+			ImGui::InputText("Device name or path", &externalVideoDevice);
+		} else {
+			ImGui::InputText("Stream URL", &externalVideoUrl);
+		}
+		im::TreeNode("Capture tools", [&]{
+			ImGui::InputText("Python executable", &externalVideoPython);
+			ImGui::InputText("FFmpeg executable", &externalVideoFFmpeg);
+			ImGui::TextUnformatted("Leave FFmpeg empty for automatic detection.");
+		});
+		if (ImGui::Button(externalVideoActive ? "Switch source" : "Start")) startExternalVideo();
+		if (externalVideoActive) {
+			ImGui::SameLine();
+			if (ImGui::Button("Stop")) stopExternalVideo();
+		}
+		ImGui::TextWrapped("%s", externalVideoStatus.c_str());
+		if (externalVideoActive && !FileOperations::exists(externalVideoFrameFile)) {
+			ImGui::TextUnformatted("Waiting for the first video frame...");
+		}
+	});
 }
 
 std::span<const ImGuiSettings::FontInfo> ImGuiSettings::getAvailableFonts()
