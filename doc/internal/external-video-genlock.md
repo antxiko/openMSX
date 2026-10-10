@@ -60,24 +60,29 @@ two seconds later. This verifies frame-based visual composition, not USB
 capture, NMS 8280 hardware behavior, digitization, or analog synchronization.
 
 The Sony HB-F900 Video I/F and HBI-F900 AV Creator must be modeled separately.
-Do not infer HBI-F900 behavior from HBI-V1 documentation.
+The HBI-F900 is the external mixer/digitizer connected to the HB-F900 video
+interface; the base computer alone is not the complete capture system. SonyVideo1
+BASIC uses `CALL VIDEOIN(2)` for superimpose, so Sony software compatibility
+needs its own command and register tests rather than assuming Philips
+`SET VIDEO 2` covers the entire device. Do not infer HBI-F900 behavior from
+HBI-V1 documentation.
 
 ## Proposed implementation order
 
 1. Verify the NMS 8280 machine definition against its ROMs, I/O, and clock
    mappings. Keep ROM binaries outside the repository.
-2. Extend the external frame source beyond deterministic test
-   frames. Define color format, dimensions, timestamp and field order at the
-   boundary so the eventual USB backend does not determine emulated behavior.
+2. Keep the shared live source usable with USB capture devices, webcams, and
+   network streams. The current FFmpeg bridge and GUI selector handle these
+   frame sources; field order and timing metadata remain to be modeled.
 3. Emulate the NMS 8280 video control and its composition modes. Test the
    visible output with deterministic frames.
 4. Emulate the NMS 8280 digitizer path into VDP VRAM, including `COPY SCREEN`,
    and compare captured VRAM against expected SCREEN 8 data.
-5. Add a cross-platform live capture backend and device selection after its
-   device and supported formats are known. Document latency and whether its
-   output is frame-based or synchronized at line/phase level.
+5. Measure the live path's latency and document its frame-based approximation
+   separately from analog line/phase genlock.
 6. Model the HB-F900/HBI-F900 combination using its own firmware and hardware
-   evidence.
+   evidence. Test SonyVideo1 `CALL VIDEOIN` modes, mixer controls, and
+   digitization with the HBI-F900 attached. Keep HBI-V1 as a later device.
 
 ## Sources
 
@@ -94,3 +99,6 @@ Do not infer HBI-F900 behavior from HBI-V1 documentation.
   https://github.com/libretro/blueMSX-libretro/blob/master/Src/Memory/romMapperNms8280VideoDa.c
 - HB-F900 and HBI-F900 overview:
   https://www.msxblue.com/manual/hbf900_c.htm
+- Sony HBI-F900 AV Creator and SonyVideo1 `CALL VIDEOIN`:
+  https://www.msx.org/wiki/Sony_HBI-F900
+  https://www.msx.org/wiki/CALL_VIDEOIN
